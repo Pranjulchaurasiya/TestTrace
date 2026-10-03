@@ -34,10 +34,6 @@ export default function Login({ onLoginSuccess }) {
     }
   };
 
-  const handleQuickFill = (u, p) => {
-    setUsername(u);
-    setPassword(p);
-  };
 
   return (
     <div className="min-h-screen bg-canvas flex flex-col justify-center items-center p-4">
@@ -102,35 +98,7 @@ export default function Login({ onLoginSuccess }) {
           </button>
         </form>
 
-        {/* Quick Demo Credentials */}
-        <div className="pt-4 border-t border-border space-y-2">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider text-center">
-            Demo Test Accounts:
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickFill('student', 'Student@12345')}
-              className="px-2 py-1.5 rounded bg-slate-50 hover:bg-slate-100 border border-border text-[11px] font-mono text-slate-700 transition-colors"
-            >
-              Student
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickFill('teacher', 'Teacher@12345')}
-              className="px-2 py-1.5 rounded bg-slate-50 hover:bg-slate-100 border border-border text-[11px] font-mono text-slate-700 transition-colors"
-            >
-              Teacher
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickFill('admin', 'Admin@12345')}
-              className="px-2 py-1.5 rounded bg-slate-50 hover:bg-slate-100 border border-border text-[11px] font-mono text-slate-700 transition-colors"
-            >
-              Admin
-            </button>
-          </div>
-        </div>
+
       </div>
     </div>
   );

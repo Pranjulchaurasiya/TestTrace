@@ -4,9 +4,11 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./testtrace.db")
 
-# If using PostgreSQL with 'postgres://', adjust to 'postgresql://' for SQLAlchemy compatibility
+# If using PostgreSQL with 'postgres://', adjust to 'postgresql+psycopg2://'
 if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 connect_args = {}
 if DATABASE_URL.startswith("sqlite"):

@@ -31,35 +31,48 @@ def init_db():
     db = SessionLocal()
     try:
         # Check if users already exist
-        existing_user = db.query(User).filter_by(username="admin").first()
-        if existing_user:
-            print("[TestTrace] Database already contains seed data. Skipping seed step.")
-            return
+        # Ensure requested accounts exist with updated passwords
+        admin = db.query(User).filter_by(username="admin").first()
+        if not admin:
+            admin = User(
+                username="admin",
+                name="Pranjul Chaurasiya",
+                email="admin@testtrace.org",
+                password_hash=get_password_hash("Pranjul27"),
+                role="ADMIN",
+            )
+            db.add(admin)
+        else:
+            admin.password_hash = get_password_hash("Pranjul27")
 
-        print("[TestTrace] Seeding initial test accounts with simple usernames...")
-        # 1. Users
-        admin = User(
-            username="admin",
-            name="System Administrator",
-            email="admin@testtrace.org",
-            password_hash=get_password_hash("Admin@12345"),
-            role="ADMIN",
-        )
-        teacher = User(
-            username="teacher",
-            name="Prof. Alan Turing",
-            email="teacher@testtrace.org",
-            password_hash=get_password_hash("Teacher@12345"),
-            role="TEACHER",
-        )
-        student = User(
-            username="student",
-            name="Rahul Sharma",
-            email="student@testtrace.org",
-            password_hash=get_password_hash("Student@12345"),
-            role="STUDENT",
-        )
-        db.add_all([admin, teacher, student])
+        teacher = db.query(User).filter((User.username == "Teacher@2026") | (User.username == "teacher")).first()
+        if not teacher:
+            teacher = User(
+                username="Teacher@2026",
+                name="Instructor",
+                email="teacher@testtrace.org",
+                password_hash=get_password_hash("Password@2026"),
+                role="TEACHER",
+            )
+            db.add(teacher)
+        else:
+            teacher.username = "Teacher@2026"
+            teacher.password_hash = get_password_hash("Password@2026")
+
+        student = db.query(User).filter((User.username == "Prashant@pc") | (User.username == "student")).first()
+        if not student:
+            student = User(
+                username="Prashant@pc",
+                name="Prashant",
+                email="prashant@pc.testtrace.org",
+                password_hash=get_password_hash("Prashant@2011"),
+                role="STUDENT",
+            )
+            db.add(student)
+        else:
+            student.username = "Prashant@pc"
+            student.password_hash = get_password_hash("Prashant@2011")
+
         db.commit()
         db.refresh(teacher)
 

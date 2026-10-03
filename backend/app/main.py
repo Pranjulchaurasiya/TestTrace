@@ -38,63 +38,72 @@ app.include_router(proctor.router)
 
 @app.on_event("startup")
 def setup_initial_accounts():
-    """Ensures requested user accounts exist with updated credentials."""
+    """Ensures requested user accounts exist with correct credentials.
+    Uses separate transactions per account so one failure doesn't affect others.
+    Uses delete+recreate to avoid unique constraint issues when renaming old accounts.
+    """
+    from sqlalchemy import func as sqlfunc
     from app.database.database import SessionLocal
     from app.models.user import User
     from app.auth.security import get_password_hash
 
-    db = SessionLocal()
-    try:
-        # Admin: username=admin, password=Pranjul27
-        admin = db.query(User).filter_by(username="admin").first()
-        if not admin:
-            admin = User(
-                username="admin",
-                name="Pranjul Chaurasiya",
-                email="admin@testtrace.org",
-                password_hash=get_password_hash("Pranjul27"),
-                role="ADMIN",
-            )
-            db.add(admin)
-        else:
-            admin.password_hash = get_password_hash("Pranjul27")
+    # Each entry: list of old usernames to purge, then the desired final account
+    accounts = [
+        {
+            "old_usernames": ["admin"],
+            "username": "admin",
+            "name": "Pranjul Chaurasiya",
+            "email": "admin@testtrace.org",
+            "password": "Pranjul27",
+            "role": "ADMIN",
+        },
+        {
+            "old_usernames": ["Teacher@2026", "teacher"],
+            "username": "Teacher@2026",
+            "name": "Teacher",
+            "email": "teacher@testtrace.org",
+            "password": "Password@2026",
+            "role": "TEACHER",
+        },
+        {
+            "old_usernames": ["Prashant@pc", "student"],
+            "username": "Prashant@pc",
+            "name": "Prashant",
+            "email": "prashant@testtrace.org",
+            "password": "Prashant@2011",
+            "role": "STUDENT",
+        },
+    ]
 
-        # Teacher: username=Teacher@2026, password=Password@2026
-        teacher = db.query(User).filter((User.username == "Teacher@2026") | (User.username == "teacher")).first()
-        if not teacher:
-            teacher = User(
-                username="Teacher@2026",
-                name="Teacher",
-                email="teacher@testtrace.org",
-                password_hash=get_password_hash("Password@2026"),
-                role="TEACHER",
-            )
-            db.add(teacher)
-        else:
-            teacher.username = "Teacher@2026"
-            teacher.password_hash = get_password_hash("Password@2026")
+    for acc in accounts:
+        db = SessionLocal()
+        try:
+            # Step 1: Delete all old variants (separate commit per delete to be safe)
+            for old_uname in acc["old_usernames"]:
+                old = db.query(User).filter(
+                    sqlfunc.lower(User.username) == old_uname.lower()
+                ).first()
+                if old:
+                    db.delete(old)
+            db.commit()
 
-        # Student: username=Prashant@pc, password=Prashant@2011
-        student = db.query(User).filter((User.username == "Prashant@pc") | (User.username == "student")).first()
-        if not student:
-            student = User(
-                username="Prashant@pc",
-                name="Prashant",
-                email="prashant@pc.testtrace.org",
-                password_hash=get_password_hash("Prashant@2011"),
-                role="STUDENT",
+            # Step 2: Insert fresh account
+            new_user = User(
+                username=acc["username"],
+                name=acc["name"],
+                email=acc["email"],
+                password_hash=get_password_hash(acc["password"]),
+                role=acc["role"],
+                is_active=True,
             )
-            db.add(student)
-        else:
-            student.username = "Prashant@pc"
-            student.password_hash = get_password_hash("Prashant@2011")
-
-        db.commit()
-    except Exception as e:
-        print(f"[Startup] Account setup warning: {e}")
-        db.rollback()
-    finally:
-        db.close()
+            db.add(new_user)
+            db.commit()
+            print(f"[Startup] Account ready: {acc['username']} ({acc['role']})")
+        except Exception as e:
+            db.rollback()
+            print(f"[Startup] ERROR for {acc['username']}: {e}")
+        finally:
+            db.close()
 
 
 @app.get("/")

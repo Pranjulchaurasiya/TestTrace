@@ -119,6 +119,7 @@ def parse_questions_with_groq(
     ]
 
     chat_completion = None
+    last_error = None
     for model_name in candidate_models:
         try:
             chat_completion = client.chat.completions.create(
@@ -131,12 +132,15 @@ def parse_questions_with_groq(
                 max_tokens=4096,
             )
             break
-        except Exception:
+        except Exception as e:
+            last_error = e
             continue
 
     if not chat_completion:
+        print(f"[DocumentParser] All Groq models failed ({last_error}). Falling back to rule-based parser.")
         return parse_questions_rule_based(raw_text, subject)
 
+    try:
         response_content = chat_completion.choices[0].message.content.strip()
         # Clean potential markdown fences
         if response_content.startswith("```json"):

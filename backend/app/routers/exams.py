@@ -252,3 +252,36 @@ async def upload_and_parse_questions(
         "questions_saved": saved_count,
         "questions": parsed_questions,
     }
+
+
+@router.delete("/{exam_id}", status_code=status.HTTP_200_OK)
+def delete_exam(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["TEACHER", "ADMIN"])),
+):
+    """Safely deletes an assessment.
+    Prevents deletion if there are active, in-progress attempts.
+    """
+    from app.models.exam_attempt import ExamAttempt
+
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    # Safety Guard: Check for ongoing/live student sessions
+    active_attempts = (
+        db.query(ExamAttempt)
+        .filter(ExamAttempt.exam_id == exam_id, ExamAttempt.status == "IN_PROGRESS")
+        .count()
+    )
+    if active_attempts > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete exam: {active_attempts} student session(s) are currently in progress.",
+        )
+
+    db.delete(exam)
+    db.commit()
+
+    return {"status": "success", "message": f"Exam '{exam.title}' deleted successfully", "id": exam_id}

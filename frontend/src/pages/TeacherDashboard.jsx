@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Cpu,
   Key,
+  Trash2,
 } from 'lucide-react';
 import { apiRequest } from '../services/api';
 import Navbar from '../components/Navbar';
@@ -228,6 +229,18 @@ export default function TeacherDashboard({ user, onLogout }) {
       setUploadError(err.message || 'Failed to parse and upload questions');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleDeleteExam = async (examId, examTitle) => {
+    if (!window.confirm(`Are you sure you want to delete "${examTitle}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await apiRequest(`/exams/${examId}`, { method: 'DELETE' });
+      await fetchData();
+    } catch (err) {
+      alert(`Error deleting exam: ${err.message}`);
     }
   };
 
@@ -593,7 +606,16 @@ export default function TeacherDashboard({ user, onLogout }) {
                       <span className="px-2 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-primary font-semibold text-[10px] uppercase">
                         {ex.subject}
                       </span>
-                      <span className="text-[10px] font-mono text-slate-400">{ex.question_count} Questions</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-400">{ex.question_count} Questions</span>
+                        <button
+                          onClick={() => handleDeleteExam(ex.id, ex.title)}
+                          title="Delete Exam"
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <h4 className="text-sm font-bold text-slate-900">{ex.title}</h4>

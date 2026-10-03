@@ -8,7 +8,8 @@ from app.models.proctoring_event import ProctoringEvent
 from app.ai.proctor_service import (
     decode_image_bytes,
     get_face_cascade,
-    extract_face_signature,
+    get_face_models,
+    extract_deep_face_embedding,
     _enrolled_face_signatures,
 )
 
@@ -167,24 +168,38 @@ async def enroll_candidate_identity(
     if frame is None:
         raise HTTPException(status_code=400, detail="Failed to decode reference photo image.")
 
-    h, w, _ = frame.shape
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
-    cascade = get_face_cascade()
-
+    detector, recognizer = get_face_models((w, h))
     faces = []
-    if cascade and not cascade.empty():
-        raw_faces = cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(50, 50),
-            flags=cv2.CASCADE_SCALE_IMAGE,
-        )
-        for (fx, fy, fw, fh) in raw_faces:
-            aspect = fh / float(fw)
-            if 0.70 <= aspect <= 1.40:
-                faces.append((fx, fy, fw, fh))
+    face_info = None
+
+    if detector is not None:
+        try:
+            _, raw_faces = detector.detect(frame)
+            if raw_faces is not None and len(raw_faces) > 0:
+                for f_info in raw_faces:
+                    fx, fy, fw, fh = int(f_info[0]), int(f_info[1]), int(f_info[2]), int(f_info[3])
+                    faces.append((fx, fy, fw, fh))
+                face_info = raw_faces[0]
+        except Exception as e:
+            print(f"[Enrollment] YuNet detection error: {e}")
+
+    # Fallback to Haar cascade if YuNet is unavailable
+    if len(faces) == 0 and detector is None:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
+        cascade = get_face_cascade()
+        if cascade and not cascade.empty():
+            raw_faces = cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=(50, 50),
+                flags=cv2.CASCADE_SCALE_IMAGE,
+            )
+            for (fx, fy, fw, fh) in raw_faces:
+                aspect = fh / float(fw)
+                if 0.70 <= aspect <= 1.40:
+                    faces.append((fx, fy, fw, fh))
 
     if len(faces) == 0:
         raise HTTPException(
@@ -198,11 +213,14 @@ async def enroll_candidate_identity(
         )
 
     (x, y, fw, fh) = faces[0]
-    face_roi = frame[max(0, y):min(h, y+fh), max(0, x):min(w, x+fw)]
-    sig = extract_face_signature(face_roi)
 
-    # Store in memory for instant verification during the test
-    _enrolled_face_signatures[attempt.id] = sig
+    # Extract 128-d deep facial feature vector via SFace
+    deep_sig = extract_deep_face_embedding(frame, face_info)
+
+    # Store in memory for instant biometric verification during the exam
+    if deep_sig is not None:
+        _enrolled_face_signatures[attempt.id] = deep_sig
+
     # Persist reference photo data URI on attempt record
     attempt.reference_photo = data_uri
 

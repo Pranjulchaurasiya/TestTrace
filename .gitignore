@@ -47,6 +47,7 @@ frontend/node_modules/
 yolov8n.pt
 *.pt
 *.onnx
+!backend/app/ai/models/*.onnx
 
 # IDE & OS
 .vscode/

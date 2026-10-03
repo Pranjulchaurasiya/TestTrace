@@ -168,6 +168,7 @@ async def enroll_candidate_identity(
     if frame is None:
         raise HTTPException(status_code=400, detail="Failed to decode reference photo image.")
 
+    h, w = frame.shape[:2]
     detector, recognizer = get_face_models((w, h))
     faces = []
     face_info = None

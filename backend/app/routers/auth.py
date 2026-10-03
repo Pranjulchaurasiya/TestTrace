@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 
 from app.database.database import get_db
 from app.models.user import User
@@ -13,13 +13,13 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/login", response_model=TokenResponse)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """Simple username & password login (supports username or email)."""
-    clean_identifier = request.username.strip().lower()
+    """Simple username & password login (supports username or email, case-insensitive)."""
+    clean_identifier = request.username.strip()
 
     user = db.query(User).filter(
         or_(
-            User.username == clean_identifier,
-            User.email == clean_identifier,
+            func.lower(User.username) == clean_identifier.lower(),
+            func.lower(User.email) == clean_identifier.lower(),
         )
     ).first()
 

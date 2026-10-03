@@ -78,27 +78,38 @@ def setup_initial_accounts():
     for acc in accounts:
         db = SessionLocal()
         try:
-            # Step 1: Delete all old variants (separate commit per delete to be safe)
-            for old_uname in acc["old_usernames"]:
-                old = db.query(User).filter(
-                    sqlfunc.lower(User.username) == old_uname.lower()
+            # Look up by any matching username or email
+            existing = None
+            for uname in acc["old_usernames"]:
+                existing = db.query(User).filter(
+                    (sqlfunc.lower(User.username) == uname.lower()) |
+                    (sqlfunc.lower(User.email) == acc["email"].lower())
                 ).first()
-                if old:
-                    db.delete(old)
-            db.commit()
+                if existing:
+                    break
 
-            # Step 2: Insert fresh account
-            new_user = User(
-                username=acc["username"],
-                name=acc["name"],
-                email=acc["email"],
-                password_hash=get_password_hash(acc["password"]),
-                role=acc["role"],
-                is_active=True,
-            )
-            db.add(new_user)
-            db.commit()
-            print(f"[Startup] Account ready: {acc['username']} ({acc['role']})")
+            if existing:
+                # Update credentials & username in-place (keeps ID and relationships intact!)
+                existing.username = acc["username"]
+                existing.name = acc["name"]
+                existing.email = acc["email"]
+                existing.password_hash = get_password_hash(acc["password"])
+                existing.role = acc["role"]
+                existing.is_active = True
+                db.commit()
+                print(f"[Startup] Account updated: {acc['username']} ({acc['role']})")
+            else:
+                new_user = User(
+                    username=acc["username"],
+                    name=acc["name"],
+                    email=acc["email"],
+                    password_hash=get_password_hash(acc["password"]),
+                    role=acc["role"],
+                    is_active=True,
+                )
+                db.add(new_user)
+                db.commit()
+                print(f"[Startup] Account created: {acc['username']} ({acc['role']})")
         except Exception as e:
             db.rollback()
             print(f"[Startup] ERROR for {acc['username']}: {e}")

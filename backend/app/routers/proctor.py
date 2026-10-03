@@ -116,12 +116,17 @@ async def analyze_camera_frame(
         raise HTTPException(status_code=403, detail="Forbidden or attempt not found")
 
     image_bytes = await frame.read()
-    analysis = analyze_frame_telemetry(image_bytes)
+    analysis = analyze_frame_telemetry(image_bytes, attempt_id=attempt.id)
 
     violation = analysis.get("violation")
     points = analysis.get("points", 0)
     terminate_exam = False
     warning_msg = None
+
+    if violation == "FACE_MISMATCH":
+        warning_msg = "Identity Alert: Candidate face does not match the enrolled student."
+    elif violation == "PHONE_DETECTED":
+        warning_msg = "Critical Alert: Unauthorized mobile device detected in frame."
 
     if violation and attempt.status == "IN_PROGRESS":
         attempt.suspicious_score += points
@@ -147,6 +152,7 @@ async def analyze_camera_frame(
     return FrameAnalysisResponse(
         attempt_id=attempt.id,
         faces_detected=analysis.get("faces_detected", 1),
+        identity_verified=analysis.get("identity_verified", True),
         gaze_status=analysis.get("gaze_status", "FOCUSED"),
         head_pose_direction=analysis.get("head_pose_direction", "STRAIGHT"),
         phone_detected=analysis.get("phone_detected", False),

@@ -17,6 +17,7 @@ export default function ProctorHUD({
   const [isMinimized, setIsMinimized] = useState(false);
   const [telemetry, setTelemetry] = useState({
     facesDetected: null,
+    identityVerified: true,
     gazeStatus: 'DETECTING',
     headPose: 'DETECTING',
   });
@@ -103,6 +104,7 @@ export default function ProctorHUD({
 
             setTelemetry({
               facesDetected: res.faces_detected,
+              identityVerified: res.identity_verified !== false,
               gazeStatus: res.gaze_status,
               headPose: res.head_pose_direction,
             });
@@ -245,11 +247,14 @@ export default function ProctorHUD({
             )}
 
             {/* Target Bounding Frame - Dynamic based on actual detected face */}
+            {/* Target Bounding Frame - Dynamic based on actual detected face and identity match */}
             {cameraActive && (
               <div
                 className={`absolute inset-2 border-2 border-dashed rounded pointer-events-none flex items-start justify-end p-1 transition-colors ${
                   telemetry.facesDetected === 1
-                    ? 'border-emerald-400/80 bg-emerald-500/5'
+                    ? telemetry.identityVerified
+                      ? 'border-emerald-400/80 bg-emerald-500/5'
+                      : 'border-rose-500/90 bg-rose-500/15 animate-pulse'
                     : telemetry.facesDetected === 0
                     ? 'border-rose-400/80 bg-rose-500/10'
                     : telemetry.facesDetected === null
@@ -260,7 +265,9 @@ export default function ProctorHUD({
                 <span
                   className={`text-[9px] font-mono px-1 rounded ${
                     telemetry.facesDetected === 1
-                      ? 'text-emerald-400 bg-black/75'
+                      ? telemetry.identityVerified
+                        ? 'text-emerald-400 bg-black/75'
+                        : 'text-rose-300 bg-rose-950/90 font-bold'
                       : telemetry.facesDetected === 0
                       ? 'text-rose-400 bg-black/75'
                       : telemetry.facesDetected === null
@@ -269,7 +276,9 @@ export default function ProctorHUD({
                   }`}
                 >
                   {telemetry.facesDetected === 1
-                    ? 'Face Locked'
+                    ? telemetry.identityVerified
+                      ? 'Face Verified'
+                      : 'Different Person Detected'
                     : telemetry.facesDetected === 0
                     ? 'No Face Detected'
                     : telemetry.facesDetected === null
@@ -289,7 +298,9 @@ export default function ProctorHUD({
               <span
                 className={`font-semibold ${
                   telemetry.facesDetected === 1
-                    ? 'text-success'
+                    ? telemetry.identityVerified
+                      ? 'text-success'
+                      : 'text-danger font-bold'
                     : telemetry.facesDetected === null
                     ? 'text-slate-400'
                     : 'text-danger'
@@ -300,7 +311,9 @@ export default function ProctorHUD({
                   : telemetry.facesDetected === 0
                   ? 'None Found'
                   : telemetry.facesDetected === 1
-                  ? '1 Locked'
+                  ? telemetry.identityVerified
+                    ? 'Verified'
+                    : 'Mismatch'
                   : `${telemetry.facesDetected} Found`}
               </span>
             </div>
@@ -341,14 +354,18 @@ export default function ProctorHUD({
             <strong
               className={
                 telemetry.facesDetected === 1
-                  ? 'text-success'
+                  ? telemetry.identityVerified
+                    ? 'text-success'
+                    : 'text-danger font-bold'
                   : telemetry.facesDetected === 0
                   ? 'text-danger'
                   : 'text-slate-500'
               }
             >
               {telemetry.facesDetected === 1
-                ? '1 Locked'
+                ? telemetry.identityVerified
+                  ? 'Verified'
+                  : 'Mismatch'
                 : telemetry.facesDetected === 0
                 ? 'None'
                 : telemetry.facesDetected ?? 'Scanning'}

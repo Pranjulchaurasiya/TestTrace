@@ -23,6 +23,7 @@ class ViolationReportResponse(BaseModel):
 class FrameAnalysisResponse(BaseModel):
     attempt_id: int
     faces_detected: int = 1
+    identity_verified: bool = True
     gaze_status: str = "FOCUSED"  # FOCUSED, LOOKING_AWAY
     head_pose_direction: str = "STRAIGHT"  # STRAIGHT, LEFT, RIGHT, UP, DOWN
     phone_detected: bool = False

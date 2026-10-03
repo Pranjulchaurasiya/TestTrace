@@ -90,13 +90,43 @@ def decode_image_bytes(image_bytes: bytes) -> np.ndarray | None:
         return None
 
 
-def analyze_frame_telemetry(image_bytes: bytes) -> dict:
-    """Analyzes a student frame for faces, head orientation, and gaze direction."""
+# In-memory enrolled face signatures and frame counters per exam attempt
+_enrolled_face_signatures: dict[int, np.ndarray] = {}
+_frame_counters: dict[int, int] = {}
+
+
+def extract_face_signature(face_bgr: np.ndarray) -> np.ndarray:
+    """Extracts normalized spatial & color signature for continuous identity verification."""
+    face_norm = cv2.resize(face_bgr, (120, 120))
+    # 1. Spatial grayscale histogram (4x4 grid of 30x30 blocks)
+    gray = cv2.cvtColor(face_norm, cv2.COLOR_BGR2GRAY)
+    blocks_gray = [gray[r:r+30, c:c+30] for r in range(0, 120, 30) for c in range(0, 120, 30)]
+    hists_gray = [cv2.normalize(cv2.calcHist([b], [0], None, [16], [0, 256]), None).flatten() for b in blocks_gray]
+
+    # 2. HSV color distribution (Hue & Saturation)
+    hsv = cv2.cvtColor(face_norm, cv2.COLOR_BGR2HSV)
+    blocks_hsv = [hsv[r:r+40, c:c+40] for r in range(0, 120, 40) for c in range(0, 120, 40)]
+    hists_hsv = [cv2.normalize(cv2.calcHist([b], [0, 1], None, [8, 8], [0, 180, 0, 256]), None).flatten() for b in blocks_hsv]
+
+    sig = np.concatenate(hists_gray + hists_hsv).astype(np.float32)
+    return sig
+
+
+def compare_face_signatures(sig1: np.ndarray, sig2: np.ndarray) -> float:
+    """Compares two facial signatures using histogram correlation (-1.0 to 1.0)."""
+    if sig1 is None or sig2 is None:
+        return 0.0
+    return float(cv2.compareHist(sig1, sig2, cv2.HISTCMP_CORREL))
+
+
+def analyze_frame_telemetry(image_bytes: bytes, attempt_id: int | None = None) -> dict:
+    """Analyzes a student frame for faces, identity match, head orientation, and gaze direction."""
     frame = decode_image_bytes(image_bytes)
 
     if frame is None or not cv2:
         return {
             "faces_detected": 0,
+            "identity_verified": False,
             "gaze_status": "LOOKING_AWAY",
             "head_pose_direction": "UNKNOWN",
             "phone_detected": False,
@@ -130,6 +160,7 @@ def analyze_frame_telemetry(image_bytes: bytes) -> dict:
     if face_count == 0:
         return {
             "faces_detected": 0,
+            "identity_verified": False,
             "gaze_status": "LOOKING_AWAY",
             "head_pose_direction": "UNKNOWN",
             "phone_detected": False,
@@ -140,6 +171,7 @@ def analyze_frame_telemetry(image_bytes: bytes) -> dict:
     elif face_count > 1:
         return {
             "faces_detected": face_count,
+            "identity_verified": False,
             "gaze_status": "NORMAL",
             "head_pose_direction": "NORMAL",
             "phone_detected": False,
@@ -148,8 +180,29 @@ def analyze_frame_telemetry(image_bytes: bytes) -> dict:
             "metadata": {"face_count": face_count},
         }
 
-    # Evaluate head orientation based on primary face bounding box offset
+    # Evaluate primary face ROI and biometric identity matching against enrolled student
     (x, y, fw, fh) = faces[0]
+    face_roi = frame[max(0, y):min(h, y+fh), max(0, x):min(w, x+fw)]
+    identity_verified = True
+    similarity_score = 1.0
+
+    if attempt_id is not None and face_roi.size > 0:
+        current_sig = extract_face_signature(face_roi)
+        if attempt_id not in _enrolled_face_signatures:
+            # First clean face detected in session: Enroll as student baseline identity signature
+            _enrolled_face_signatures[attempt_id] = current_sig
+            identity_verified = True
+            similarity_score = 1.0
+        else:
+            enrolled_sig = _enrolled_face_signatures[attempt_id]
+            similarity_score = compare_face_signatures(enrolled_sig, current_sig)
+            if similarity_score >= 0.40:
+                identity_verified = True
+                # Smooth adaptive update to accommodate subtle lighting/head angle variations
+                _enrolled_face_signatures[attempt_id] = (0.90 * enrolled_sig + 0.10 * current_sig).astype(np.float32)
+            else:
+                identity_verified = False
+
     face_center_x = x + fw / 2.0
     frame_center_x = w / 2.0
     offset_ratio = (face_center_x - frame_center_x) / (w / 2.0)
@@ -158,7 +211,10 @@ def analyze_frame_telemetry(image_bytes: bytes) -> dict:
     violation = None
     points = 0
 
-    if offset_ratio > 0.40:
+    if not identity_verified:
+        violation = "FACE_MISMATCH"
+        points = 8
+    elif offset_ratio > 0.40:
         head_direction = "RIGHT"
         violation = "LOOKING_RIGHT"
         points = 2
@@ -167,8 +223,14 @@ def analyze_frame_telemetry(image_bytes: bytes) -> dict:
         violation = "LOOKING_LEFT"
         points = 2
 
-    # Check for unauthorized phone presence
-    phone_found, phone_conf = detect_phone_in_frame(frame)
+    # Check for unauthorized phone presence periodically (every 6th frame to maintain 20ms response time)
+    phone_found = False
+    phone_conf = 0.0
+    if attempt_id is not None:
+        cnt = _frame_counters.get(attempt_id, 0) + 1
+        _frame_counters[attempt_id] = cnt
+        if cnt % 6 == 1:
+            phone_found, phone_conf = detect_phone_in_frame(frame)
 
     if phone_found:
         violation = "PHONE_DETECTED"
@@ -176,6 +238,8 @@ def analyze_frame_telemetry(image_bytes: bytes) -> dict:
 
     return {
         "faces_detected": 1,
+        "identity_verified": identity_verified,
+        "identity_similarity": round(float(similarity_score), 3),
         "gaze_status": "FOCUSED" if (violation is None) else "LOOKING_AWAY",
         "head_pose_direction": head_direction,
         "phone_detected": phone_found,
@@ -183,6 +247,7 @@ def analyze_frame_telemetry(image_bytes: bytes) -> dict:
         "points": points,
         "metadata": {
             "offset_ratio": round(float(offset_ratio), 3),
+            "similarity_score": round(float(similarity_score), 3),
             "face_box": [int(x), int(y), int(fw), int(fh)],
             "phone_confidence": phone_conf if phone_found else None,
         },

@@ -132,7 +132,7 @@ export default function Dashboard({ user, onStartExam, onLogout }) {
                   </div>
 
                   <button
-                    onClick={() => onStartExam(exam.id)}
+                    onClick={() => onStartExam(exam.id, exam)}
                     className="w-full py-2.5 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1.5"
                   >
                     <span>Enter Examination Room</span>

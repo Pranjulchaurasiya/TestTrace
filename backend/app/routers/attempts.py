@@ -1,7 +1,16 @@
 from datetime import datetime, timezone, timedelta
 import json
-from fastapi import APIRouter, Depends, HTTPException, status
+import base64
+import cv2
+from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
 from sqlalchemy.orm import Session
+from app.models.proctoring_event import ProctoringEvent
+from app.ai.proctor_service import (
+    decode_image_bytes,
+    get_face_cascade,
+    extract_face_signature,
+    _enrolled_face_signatures,
+)
 
 from app.database.database import get_db
 from app.models.exam import Exam
@@ -117,6 +126,105 @@ def start_exam_attempt(
             max_tab_switches_threshold=exam.max_tab_switches_threshold,
         ),
     )
+
+
+@router.post("/{attempt_id}/enroll-identity")
+async def enroll_candidate_identity(
+    attempt_id: int,
+    photo: UploadFile | None = File(None),
+    photo_base64: str | None = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Enroll candidate's official reference photo prior to starting the timed examination."""
+    attempt = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
+    if not attempt or attempt.student_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden or attempt not found")
+
+    image_bytes = None
+    data_uri = None
+
+    if photo:
+        image_bytes = await photo.read()
+        b64 = base64.b64encode(image_bytes).decode('utf-8')
+        mime = photo.content_type or 'image/jpeg'
+        data_uri = f"data:{mime};base64,{b64}"
+    elif photo_base64:
+        try:
+            if "," in photo_base64:
+                header, encoded = photo_base64.split(",", 1)
+                image_bytes = base64.b64decode(encoded)
+                data_uri = photo_base64
+            else:
+                image_bytes = base64.b64decode(photo_base64)
+                data_uri = f"data:image/jpeg;base64,{photo_base64}"
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid base64 image data")
+    else:
+        raise HTTPException(status_code=400, detail="Missing candidate photo payload")
+
+    frame = decode_image_bytes(image_bytes)
+    if frame is None:
+        raise HTTPException(status_code=400, detail="Failed to decode reference photo image.")
+
+    h, w, _ = frame.shape
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    cascade = get_face_cascade()
+
+    faces = []
+    if cascade and not cascade.empty():
+        raw_faces = cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(50, 50),
+            flags=cv2.CASCADE_SCALE_IMAGE,
+        )
+        for (fx, fy, fw, fh) in raw_faces:
+            aspect = fh / float(fw)
+            if 0.70 <= aspect <= 1.40:
+                faces.append((fx, fy, fw, fh))
+
+    if len(faces) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No face detected. Please ensure your face is clearly visible, well-lit, and centered."
+        )
+    if len(faces) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Multiple faces detected in frame. Only the registered student must be in front of the camera."
+        )
+
+    (x, y, fw, fh) = faces[0]
+    face_roi = frame[max(0, y):min(h, y+fh), max(0, x):min(w, x+fw)]
+    sig = extract_face_signature(face_roi)
+
+    # Store in memory for instant verification during the test
+    _enrolled_face_signatures[attempt.id] = sig
+    # Persist reference photo data URI on attempt record
+    attempt.reference_photo = data_uri
+
+    # Add audit log event
+    event = ProctoringEvent(
+        attempt_id=attempt.id,
+        event_type="IDENTITY_ENROLLED",
+        severity="INFO",
+        points=0,
+        timestamp=datetime.now(timezone.utc),
+        metadata_json=json.dumps({"face_box": [int(x), int(y), int(fw), int(fh)]}),
+    )
+    db.add(event)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Candidate biometric identity successfully verified and enrolled.",
+        "attempt_id": attempt.id,
+        "face_box": [int(x), int(y), int(fw), int(fh)],
+        "reference_photo": data_uri,
+    }
 
 
 @router.get("/{attempt_id}/time-sync", response_model=TimeSyncResponse)
@@ -582,6 +690,7 @@ def get_attempt_answers_for_teacher(
         "attempt_id": attempt.id,
         "student_id": attempt.student_id,
         "final_score": float(attempt.final_score or 0.0),
+        "reference_photo": attempt.reference_photo,
         "items": items,
     }
 

@@ -33,6 +33,7 @@ export default function TeacherDashboard({ user, onLogout }) {
   // Manual Review & Grading Modal state
   const [selectedAttemptForReview, setSelectedAttemptForReview] = useState(null);
   const [reviewAnswers, setReviewAnswers] = useState([]);
+  const [reviewReferencePhoto, setReviewReferencePhoto] = useState(null);
   const [loadingReview, setLoadingReview] = useState(false);
   const [savingGradeId, setSavingGradeId] = useState(null);
 
@@ -110,12 +111,15 @@ export default function TeacherDashboard({ user, onLogout }) {
   const handleOpenReviewModal = async (attempt) => {
     setSelectedAttemptForReview(attempt);
     setLoadingReview(true);
+    setReviewReferencePhoto(null);
     try {
       const data = await apiRequest(`/attempts/${attempt.attempt_id}/answers`);
       setReviewAnswers(data?.items || []);
+      setReviewReferencePhoto(data?.reference_photo || null);
     } catch (err) {
       console.error('Error fetching student answers:', err);
       setReviewAnswers([]);
+      setReviewReferencePhoto(null);
     } finally {
       setLoadingReview(false);
     }
@@ -844,6 +848,25 @@ export default function TeacherDashboard({ user, onLogout }) {
             </div>
 
             <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              {reviewReferencePhoto && (
+                <div className="flex items-center gap-4 p-3 bg-slate-50 border border-border rounded-xl">
+                  <img
+                    src={reviewReferencePhoto}
+                    alt="Verified Candidate Baseline"
+                    className="w-14 h-14 object-cover rounded-lg border border-slate-300 shadow-2xs shrink-0"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Verified Pre-Flight Biometric Photograph</span>
+                    </span>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Captured during pre-exam system calibration. Used as the authoritative baseline for continuous face matching throughout the test.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {loadingReview ? (
                 <div className="py-12 text-center text-xs text-slate-500">Loading student answers...</div>
               ) : reviewAnswers.length === 0 ? (

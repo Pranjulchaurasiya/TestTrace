@@ -21,6 +21,7 @@ class ExamAttempt(Base):
     final_score = Column(Numeric(6, 2), default=0.0)
 
     # Proctoring & Integrity Telemetry
+    reference_photo = Column(Text, nullable=True)  # Base64 data URI of official pre-exam reference photo
     suspicious_score = Column(Integer, default=0, nullable=False)
     integrity_status = Column(String(20), default="LOW", nullable=False)  # LOW, MEDIUM, HIGH, CRITICAL
     tab_switch_count = Column(Integer, default=0, nullable=False)

@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
+import PreExamCheck from './components/PreExamCheck';
 import ExamRoom from './pages/ExamRoom';
 import ResultView from './pages/ResultView';
 import { getUser, setToken, setUser } from './services/api';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'dashboard', 'exam', 'result'
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'dashboard', 'pre-exam', 'exam', 'result'
   const [activeExamId, setActiveExamId] = useState(null);
+  const [activeExamDetails, setActiveExamDetails] = useState(null);
   const [examResult, setExamResult] = useState(null);
 
   useEffect(() => {
@@ -32,9 +34,10 @@ export default function App() {
     setCurrentView('login');
   };
 
-  const handleStartExam = (examId) => {
+  const handleStartExam = (examId, examData) => {
     setActiveExamId(examId);
-    setCurrentView('exam');
+    setActiveExamDetails(examData || null);
+    setCurrentView('pre-exam');
   };
 
   const handleExamCompleted = (result) => {
@@ -44,12 +47,24 @@ export default function App() {
 
   const handleBackToDashboard = () => {
     setActiveExamId(null);
+    setActiveExamDetails(null);
     setExamResult(null);
     setCurrentView('dashboard');
   };
 
   if (currentView === 'login' || !currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  if (currentView === 'pre-exam') {
+    return (
+      <PreExamCheck
+        examId={activeExamId}
+        examDetails={activeExamDetails}
+        onProceedToExam={() => setCurrentView('exam')}
+        onCancel={handleBackToDashboard}
+      />
+    );
   }
 
   if (currentView === 'exam') {

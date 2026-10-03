@@ -631,8 +631,12 @@ def get_all_attempts_overview(
     if exam_id:
         query = query.filter(ExamAttempt.exam_id == exam_id)
     elif current_user.role == "TEACHER":
-        # Only attempts for exams created by this teacher
-        teacher_exam_ids = [e.id for e in db.query(Exam.id).filter(Exam.created_by == current_user.id).all()]
+        # Attempts for exams created by this teacher, or unassigned/system exams
+        teacher_exam_ids = [
+            e.id for e in db.query(Exam.id).filter(
+                (Exam.created_by == current_user.id) | (Exam.created_by == None)
+            ).all()
+        ]
         query = query.filter(ExamAttempt.exam_id.in_(teacher_exam_ids))
 
     attempts = query.order_by(ExamAttempt.id.desc()).all()
